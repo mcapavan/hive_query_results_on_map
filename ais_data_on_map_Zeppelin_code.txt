@@ -1,0 +1,57 @@
+%spark2.spark
+val sqlContext = new org.apache.spark.sql.SQLContext(sc)
+val df = sqlContext.sql("select lat, lon, acquisitiontime, sog from ais_data_orc where mmsi=1001001")
+case class Loc(lat: Double, lon: Double)
+case class aTime(value: String, loc: Loc)
+val dataPoints = df.map{s => aTime(s.getString(2), Loc( s.getDouble(0), s.getDouble(1)))}
+val dataPointsJson = dataPoints.toJSON.take(10)
+z.angularBind("locations", dataPointsJson)
+
+%angular
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.0.3/dist/leaflet.css" />
+<div id="map" style="height: 800px; width: 100%"> </div>
+<script type="text/javascript">
+function initMap() {
+    var map = L.map('map').setView([30.00, -30.00], 3);
+
+    L.tileLayer('http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: 'Map data © <a href="http://openstreetmap.org">OpenStreetMap</a> contributors',
+        maxZoom: 15,
+        minZoom: 3
+    }).addTo(map);
+
+    var geoMarkers = L.layerGroup().addTo(map);
+
+    var el = angular.element($('#map').parent('.ng-scope'));
+    angular.element(el).ready(function() {
+        window.locationWatcher = el.scope().compiledScope.$watch('locations', function(newValue, oldValue) {
+          // geoMarkers.clearLayers(); -- if you want to only show new data clear the layer first
+            angular.forEach(newValue, function(ais) {
+
+                 try { JSON.parse(ais); } catch(error) { alert(error); }
+                windJSON = JSON.parse(ais)
+                var marker = L.marker([windJSON.loc.lat, windJSON.loc.lon]).bindPopup(windJSON.value).addTo(geoMarkers);
+
+            });
+        })
+    });;
+
+}
+
+if (window.locationWatcher) {
+    // clear existing watcher otherwise we'll have duplicates
+    window.locationWatcher();
+}
+
+if (window.L) {
+    initMap();
+} else {
+    console.log('Loading Leaflet library');
+    var sc = document.createElement('script');
+    sc.type = 'text/javascript';
+    sc.src = 'https://unpkg.com/leaflet@1.0.3/dist/leaflet.js';
+    sc.onload = initMap;
+    sc.onerror = function(err) { alert(err); }
+    document.getElementsByTagName('head')[0].appendChild(sc);
+}
+</script>
